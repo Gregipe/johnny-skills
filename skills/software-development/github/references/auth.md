@@ -141,6 +141,39 @@ git config --global user.name "Their Name"
 git config --global user.email "their-email@example.com"
 ```
 
+### Option C: Dedicated deploy key for server-side repo sync (single-repo scope)
+
+For a headless server that only needs push/pull on ONE repo (e.g. syncing a knowledge base), a per-repo deploy key beats an account-wide SSH key and a PAT: least privilege, revocable per repo, no secret ever crosses chat.
+
+```bash
+# Dedicated, purpose-named key on the server
+ssh-keygen -t ed25519 -f ~/.ssh/<repo-name> -N "" -C "<machine>-<repo>"
+cat ~/.ssh/<repo-name>.pub   # give THIS line to the user
+```
+
+User adds it at repo → Settings → Deploy keys → Add deploy key → paste, tick **Allow write access**. (Not account SSH keys — those grant everything; deploy keys scope to one repo.)
+
+```bash
+# First-use host key + per-repo identity
+ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+cat >> ~/.ssh/config <<EOF
+Host github.com-<repo>
+    HostName github.com
+    IdentityFile ~/.ssh/<repo-name>
+    IdentitiesOnly yes
+EOF
+git clone git@github.com-<repo>:<owner>/<repo>.git
+cd <repo>
+git config user.name "<machine>-johnny"   # repo-scoped identity, not global
+git config user.email "<machine>@nous.local"
+```
+
+Verify with `git ls-remote git@github.com-<repo>:<owner>/<repo>.git`. For deploy keys, `ssh -T git@github.com` does NOT echo the account name (deploy keys carry no account context) — ls-remote against the repo is the real write-access test.
+
+PITFALL: the `url."git@github.com:".insteadOf` rewrite from Option B hijacks all HTTPS clones onto the default key; on a machine using per-repo deploy keys, skip that rewrite and use the ssh-config host alias (or `GIT_SSH_COMMAND="ssh -i ~/.ssh/<key>"` per command) so each repo resolves its own key.
+
+Deploy keys are push/pull only — no API, no gh. Fine for content sync; a repo job that also needs issues/PRs/API calls for a fine-grained PAT instead.
+
 ---
 
 ## Method 2: gh CLI Authentication

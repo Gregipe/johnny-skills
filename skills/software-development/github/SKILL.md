@@ -24,7 +24,7 @@ starting that workflow, the body below only routes.
 
 | Task | Read first |
 |---|---|
-| Auth broken / new machine / token or SSH setup / gh login | `references/auth.md` |
+| Auth broken / new machine / token or SSH setup / gh login / server deploy-key sync | `references/auth.md` |
 | Create, triage, label, assign, close issues | `references/issues.md` |
 | Branch, commit, open PR, watch CI, merge | `references/pr-workflow.md` |
 | Carry an ISSUE to a verified PR (full delivery loop) | `references/issue-to-pr.md` |

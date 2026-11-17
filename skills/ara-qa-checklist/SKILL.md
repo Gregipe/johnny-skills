@@ -121,6 +121,10 @@ See the full skill for the timezone leak patterns, audit commands, and centraliz
 
 After ANY code change to server.py, restart and curl-verify the affected endpoints. A fix declared done without curl verification is false.
 
+## Dashboard UI Preferences (Greg)
+
+Voice UI: full-screen overlay with animated orb, single caption, no scroll transcript.
+
 ## Frontend Error Visibility
 
 **`catch(e) {}` is a bug, not a style choice.** Every empty catch block in user-facing code silently swallows errors, making the UI appear frozen. Before every deploy, audit dashboard.js:

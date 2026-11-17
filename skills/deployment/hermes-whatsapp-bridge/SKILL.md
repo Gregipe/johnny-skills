@@ -13,39 +13,6 @@ metadata:
 
 # Hermes WhatsApp Bridge Ops
 
-## Current topology — FULLY server-hosted (since 2026-10-17)
-
-Gateway + bridge + cron + dashboard ALL live on the Hetzner VPS. The Mac is a
-client only — no gateway, no bridge, no tunnel. Mac down/asleep = zero impact
-on WhatsApp comms.
-
-- **Gateway:** systemd `hermes-gateway-johnny.service` (`/root/.local/bin/hermes
-  --profile johnny gateway run`, HERMES_HOME=/root/.hermes). It spawns and owns
-the bridge exactly like the old Mac topology — no separate bridge unit.
-- **Bridge:** gateway child on server :3000, session at
-  `/root/.hermes/profiles/johnny/whatsapp/session` (copied from the Mac — the
-  session is machine-portable; ONE active socket at a time, see Pitfalls).
-- **Dashboard:** systemd `johnny-dashboard.service` (`/root/johnny-dashboard`,
-  serve.sh → static :8410 + chat bridge.py :8411, both 127.0.0.1) behind Caddy
-  `:8081` with basicauth. index.html uses `const BRIDGE=""` (relative), Caddy
-  routes /chat/* and /activity* → 8411, everything else → 8410. bridge.py
-  ALLOW_ORIGINS must include `http://46.224.132.99:8081`. ufw must allow 8081/tcp.
-- **Cron:** managed server-side ONLY: `ssh root@46.224.132.99 "hermes --profile
-  johnny cron ..."`. Never use cronjob_manage from a Mac TUI session — it edits
-  the stale Mac copy of jobs.json, not the server's.
-- **Ops:** restart = `systemctl restart hermes-gateway-johnny` (bridge follows).
-  Bridge reconnect = `systemctl restart hermes-gateway-johnny`. Logs:
-  `/root/.hermes/profiles/johnny/logs/gateway-service.log`; delivery truth =
-  `sqlite3 /root/.hermes/profiles/johnny/cron/executions.db`.
-- **Zomato MCP** needs re-auth on the server (OAuth is browser-interactive;
-  run `hermes mcp login` over ssh when needed).
-
-## Remote bridge (server-hosted) — OBSOLETE, historical
-
-Superseded by the fully server-hosted topology above. Kept for reference only:
-the tunnel (`ai.hermes.whatsapp-tunnel` LaunchAgent), `remote_bridge` flag, and
-`/opt/whatsapp-bridge` (its session is LOGGED OUT — do not reuse) are all dead.
-
 ## When to Use
 
 - Greg reports WhatsApp comms to Johnny are delayed, missing, or broken.
@@ -214,15 +181,16 @@ when bridge and gateway share the box.
   stop the server gateway, restart the Mac gateway, and the old topology
   resumes.
 
+## Inbound voice notes failing auto-transcription
+
+When a voice note arrives flagged "could not be transcribed automatically",
+transcribe it yourself with the verified pipeline in
+`references/voice-note-manual-transcription.md` (ffmpeg to 16kHz mono WAV →
+`/opt/ara/scribe_stt.py`, Scribe v2). Returns in seconds; then reply to Greg
+from the transcript.
+
 ## Pitfalls
 
-- **Never restart the Mac gateway.** The Mac copy of the profile still exists
-  (frozen snapshot). Running `hermes --profile johnny gateway run` on the Mac
-  reconnects the SAME WhatsApp session → WhatsApp kicks the server bridge.
-  Mac-side local work = a different profile, or the server dashboard.
-- **cronjob_manage from a Mac session edits the Mac's jobs.json**, which the
-  server scheduler never reads. Server cron changes go through ssh
-  `hermes --profile johnny cron ...` (see Current topology).
 - `pkill -f <pattern>` inside an ssh one-liner matches the remote shell's OWN
   cmdline (the command text contains the pattern) and kills the session before
   the rest of the chain runs. Exclude the shell: `PIDS=$(pgrep -f <pattern> |

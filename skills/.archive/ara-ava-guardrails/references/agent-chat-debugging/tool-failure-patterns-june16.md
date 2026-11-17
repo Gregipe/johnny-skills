@@ -113,38 +113,4 @@ if voice_note and is_data_modifying:
 # Line 5272 — pre_confirmed OVERRIDES it
 if pre_confirmed:
     confirmed = True
-    intent = "now"  # ← clobbers voice_note safeguard
-```
-
-**Fix:** Reversed the order — `pre_confirmed` check runs FIRST, THEN voice_note check can override:
-```python
-if pre_confirmed:
-    confirmed = True
-    intent = "now"
-
-# Voice notes ALWAYS override pre_confirmed
-if voice_note and is_data_modifying:
-    intent = "ask"
-    confirmed = False
-```
-
-## Pattern 5: SQL != "string" Excludes NULL Rows
-
-**Symptom:** `GET /api/actions` returned 0 results. Filter was `outcome_state != "resolved"`.
-
-**Root cause:** In SQL, `NULL != 'resolved'` evaluates to `NULL` (not `TRUE`). WHERE clauses treat NULL as false. Every action with `outcome_state IS NULL` was excluded.
-
-**Fix pattern:**
-```python
-# ❌ BROKEN — NULL rows excluded
-q.filter(ActionItem.outcome_state != "resolved")
-
-# ✅ CORRECT — NULL rows included
-from sqlalchemy import or_
-q.filter(or_(ActionItem.outcome_state != "resolved", ActionItem.outcome_state == None))
-
-# ✅ Simpler — use column known to be NOT NULL or filter only what you need
-q.filter(ActionItem.execution_state != "cancelled")
-```
-
-**Rule:** Any filter with `!= "string"` on a nullable column MUST have an explicit NULL check. Grep for `!= "` in server.py to find all instances.
+    intent = "now"  # ← clobbers voic
