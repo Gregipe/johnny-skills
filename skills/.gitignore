@@ -1,0 +1,8 @@
+# Machine-local state inside skills/ — never synced (lock/cache/curator churn).
+.locks/
+.hub/
+.usage.json
+.curator_ledger.jsonl
+.curator_state
+.curator_suppressed
+.bundled_manifest

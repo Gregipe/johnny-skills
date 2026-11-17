@@ -1,0 +1,145 @@
+# Calendar Tools Reference
+
+Full reference for Greg's calendar system. Four tools work together:
+
+## 1. GitHub Pages App (primary)
+
+**URL:** https://gregipe.github.io/greg_calendar/ (bookmark on all devices)
+
+**First-time setup on each device:**
+1. Open the URL
+2. Click ⚙️ (Settings) in header
+3. Paste your GitHub PAT (fine-grained, Contents: Read & write, scoped to Gregipe/greg_calendar)
+4. Click Test Connection → should say OK
+5. Click Save → page auto-syncs
+6. Tap ☁️ Sync to load any existing data
+
+**Design details:**
+- Light/iOS aesthetic — white cards, #007aff accent, #f2f2f7 system gray background
+- **Compressed time grid** — 18px per 15-min row (desktop) / 16px (mobile). Only :00 labels shown; :30 mark is a dashed line only. This is by Greg's explicit request ("compress by 50%")
+- **🔵 Recovery blocks** always auto-snap to exactly 15 min with prescriptive notes: "🚶 Walk outside (no phone) → stretch → 💧 water"
+
+**Features:**
+- Month grid with drain-tier chips on each day
+- Click a day → 15-min time grid (6 AM – 10 PM)
+- Click a time slot → "New Block" modal with title, tier (🔴🟡🟢🔵), time, notes, Hunar.ai toggle
+- Selecting 🔵 in the modal auto-snaps duration to 15 min + sets placeholder hint
+- Click existing block → edit/delete
+- 🔵 Auto Recovery button — scans day, inserts 15-min breaks between same-tier blocks with prescriptive notes
+- ☁️ Sync button — force push/pull from GitHub
+- Export/Import JSON buttons
+- Keyboard: `n` for new block, `Escape` to close modals/views
+
+## 2. CLI Tool (`calendar-ctl.py`)
+
+**Location:** `~/.hermes/calendar-ctl.py`
+
+**Setup cloud access:**
+```bash
+source ~/.hermes/.calendar-token.sh
+```
+This sets `CALENDAR_GITHUB_TOKEN` env var. Without it, CLI reads/writes the local file only.
+
+### Commands
+
+| Command | Usage | Description |
+|---------|-------|-------------|
+| `read` | `read [--date YYYY-MM-DD] [--week] [--cloud]` | Show day, week, or last 14 days |
+| `add` | `add --date YYYY-MM-DD --start HH:MM --end HH:MM --title "..." --tier 🔴 [--notes "..." --hunai] [--cloud]` | Add a block |
+| `edit` | `edit --id bl_XXX [--title ... --tier ... --start ... --end ... --notes ...] [--cloud]` | Edit a block by ID |
+| `delete` | `delete --id bl_XXX [--cloud]` | Delete a block by ID |
+| `report` | `report [--date YYYY-MM-DD] [--cloud]` | Full status with ◀ NOW / ⏳ upcoming markers |
+| `auto-recovery` | `auto-recovery --date YYYY-MM-DD [--minutes 15] [--cloud]` | Insert 15-min 🔵 breaks between same-tier blocks |
+| `next-recovery` | `next-recovery [--cloud]` | Show next 🔵 block today |
+| `export` | `export [--path output.json]` | Export local data to file |
+| `import` | `import --path input.json [--cloud]` | Import from file, merge with local |
+
+**Always add `--cloud` to read/write the GitHub repo directly** (requires `source ~/.hermes/.calendar-token.sh` first).
+
+### Typical Briefing Commands
+
+```bash
+# What's happening now + next
+source ~/.hermes/.calendar-token.sh && python3 ~/.hermes/calendar-ctl.py report --cloud
+
+# Show specific day
+python3 ~/.hermes/calendar-ctl.py read --date 2026-05-11 --cloud
+
+# Slot a new task at the next available time
+python3 ~/.hermes/calendar-ctl.py add --date 2026-05-11 --start 14:00 --end 14:30 --title "LinkedIn post" --tier 🟡 --cloud
+```
+
+## 3. Local HTML App (`greg-calendar.html`)
+
+**Location:** `~/.hermes/greg-calendar.html`
+
+**Open:** `open ~/.hermes/greg-calendar.html`
+
+Identical UI to GitHub Pages app (light/iOS theme, compressed grid) but uses localStorage only. Use when offline. Export JSON and import to the GitHub Pages app to sync. **Don't update this file independently** — the GitHub-hosted `index.html` in `~/.hermes/greg_calendar/` is the canonical version; push changes there and redeploy.
+
+## 4. Daily Calendar Markdown (`daily-calendar.md`)
+
+**Location:** `~/.hermes/daily-calendar.md`
+
+Drives the 7AM and 8:30PM crons. Not directly synced to GitHub — update manually during briefings.
+
+## JSON Schema
+
+The `calendar-data.json` schema:
+
+```json
+{
+  "version": 1,
+  "lastUpdated": "2026-05-11T11:15:00",
+  "settings": {
+    "dayStart": "06:00",
+    "dayEnd": "22:00",
+    "slotMinutes": 15,
+    "tiers": {
+      "🔴": {"label": "High Drain", "color": "#ef4444"},
+      "🟡": {"label": "Medium Drain", "color": "#f59e0b"},
+      "🟢": {"label": "Low Drain", "color": "#22c55e"},
+      "🔵": {"label": "Restorative", "color": "#3b82f6"}
+    },
+    "recoveryMinutes": 15,
+    "recoveryTier": "🔵",
+    "noBackToBack": ["🔴"],
+    "hunaiPrefix": "Hunar.ai : "
+  },
+  "days": {
+    "2026-05-11": {
+      "notes": "Monday — Planning + syncs",
+      "blocks": [
+        {
+          "id": "bl_001",
+          "start": "08:30",
+          "end": "09:15",
+          "title": "Deep work block",
+          "tier": "🔴",
+          "notes": "Bajaj analysis"
+        }
+      ]
+    }
+  }
+}
+```
+
+**Block ID format:** `bl_` + 8 random hex chars. Generated by the HTML app or CLI tool.
+
+## 🔵 Recovery Rules (hard rules, match calendar tool behavior)
+
+- All 🔵 blocks are exactly **15 minutes**
+- Default notes: `🚶 Walk outside (no phone) → stretch → 💧 water`
+- In the HTML app: selecting 🔵 tier auto-snaps duration + sets the notes placeholder
+- In the CLI: `auto-recovery --minutes 15` (default)
+- No 🔴 may be back-to-back without a 🔵 between them
+- Never leave a recovery slot unlabeled — it's a scheduled block, not empty space
+
+## GitHub Token
+
+- **Type:** Fine-grained PAT
+- **Scope:** Contents: Read & write on `Gregipe/greg_calendar` only
+- **Stored in:**
+  - Browser localStorage (per device, via HTML app ⚙️ Settings)
+  - `~/.hermes/.calendar-token.sh` (for CLI access)
+  - **Never** hardcoded in any committed file

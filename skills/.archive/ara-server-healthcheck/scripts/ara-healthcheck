@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""
+ARA Server Healthcheck — standalone CLI
+Run: ara-healthcheck
+Verifies server health, UI pages, API endpoints, chat, and cleans up test artifacts.
+"""
+
+import json
+import subprocess
+import sys
+
+BASE = "http://localhost:8766"
+PASS = 0
+FAIL = 0
+
+def log(ok: bool, label: str, detail: str = ""):
+    global PASS, FAIL
+    icon = "✅" if ok else "❌"
+    if ok:
+        PASS += 1
+    else:
+        FAIL += 1
+    print(f"  {icon} {label}" + (f" — {detail}" if detail else ""))
+
+def curl(path: str, method: str = "GET", data: str = None, timeout: int = 15) -> tuple[int, str]:
+    cmd = ["curl", "-s", "-w", "\n%{http_code}", f"{BASE}{path}"]
+    if method != "GET":
+        cmd += ["-X", method]
+    if data:
+        cmd += ["-H", "Content-Type: application/json", "-d", data]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        parts = r.stdout.strip().rsplit("\n", 1)
+        code = int(parts[-1].strip()) if len(parts) > 1 else 0
+        body = parts[0] if len(parts) > 1 else r.stdout.strip()
+        return code, body
+    except subprocess.TimeoutExpired:
+        return 0, "timeout"
+    except Exception as e:
+        return 0, str(e)
+
+def main():
+    global PASS, FAIL
+    print("\n" + "=" * 60)
+    print("  ARA SERVER HEALTHCHECK")
+    print("=" * 60)
+
+    # Server Health
+    print("\n📡 Server Health")
+    code, _ = curl("/")
+    log(code == 200, "Landing page", f"HTTP {code}")
+    code, _ = curl("/dashboard")
+    log(code == 200, "Dashboard", f"HTTP {code}")
+
+    # Get tenant
+    code, body = curl("/api/tenants")
+    if code != 200 or not body.strip():
+        log(False, "Failed to get tenants")
+        return
+    tenants = json.loads(body)
+    tenant_id = tenants[0]["id"]
+    baseline_leads = tenants[0]["lead_count"]
+    log(True, f"Tenant: {tenant_id} | Lead baseline: {baseline_leads}")
+
+    # UI Pages
+    print("\n🖥️  UI Pages")
+    for name, path in [("Landing", "/"), ("Dashboard", "/dashboard"), ("Threads", "/threads"),
+                       ("Cadence", "/cadence"), ("Induction", "/induction"),
+                       ("WhatsApp Link", "/api/whatsapp/link")]:
+        code, _ = curl(path)
+        log(code == 200, name, f"HTTP {code}")
+
+    # Core API
+    print("\n🔌 Core API Read Endpoints")
+    endpoints = [
+        ("Tenants", "/api/tenants"), ("Deals", "/api/deals"),
+        ("Deal Stats", "/api/deals/stats"), ("Activities", "/api/activities"),
+        ("Insights", "/api/insights"), ("Insight Stats", "/api/insights/stats"),
+        ("Learning Stats", "/api/learning/stats"), ("Actions", "/api/actions"),
+        ("Action Stats", "/api/actions/stats"),
+        ("WhatsApp Status", "/api/whatsapp/status"),
+        ("Threads", f"/api/threads/{tenant_id}"),
+        ("Agent Suggestions", f"/api/agent/suggestions/{tenant_id}"),
+        ("Knowledge", f"/api/knowledge/{tenant_id}"),
+        ("Skills", "/api/skills"),
+        ("Cadence Config", "/api/cadence/config"),
+    ]
+    for name, path in endpoints:
+        code, _ = curl(path)
+        log(code == 200, name, f"HTTP {code}")
+
+    # Lead CRUD
+    print("\n👤 Lead CRUD")
+    code, body = curl(f"/api/tenants/{tenant_id}/leads", "POST",
+                      json.dumps({"name": "[HEALTHCHECK] Test Lead",
+                                  "email": "healthcheck@test.local",
+                                  "phone": "+919999999999",
+                                  "company": "HealthCheck Inc",
+                                  "lead_source": "test"}), timeout=20)
+    if code != 200:
+        log(False, "Create Lead", f"HTTP {code}")
+        lead_id = None
+    else:
+        lead = json.loads(body)
+        lead_id = lead.get("id", "")
+        log(bool(lead_id), "Create Lead", f"ID: {lead_id}")
+
+    if lead_id:
+        code, body = curl(f"/api/leads/{lead_id}")
+        g = json.loads(body) if body else {}
+        log(g.get("name","") == "[HEALTHCHECK] Test Lead", "GET Lead", f"name={g.get('name')}")
+        code, body = curl("/api/leads/search?q=HealthCheck")
+        s = json.loads(body) if body else []
+        log(len(s) > 0, "Search Lead", f"{len(s)} results")
+        code, _ = curl(f"/api/leads/{lead_id}", "PATCH", json.dumps({"notes": "verified"}))
+        log(code == 200, "PATCH Lead", f"HTTP {code}")
+        code, body = curl("/api/leads/check-duplicate?phone=%2B919999999999")
+        d = json.loads(body) if body else {}
+        log(bool(d.get("duplicates")), "Duplicate Check")
+
+    # Deal CRUD
+    print("\n💼 Deal CRUD")
+    code, body = curl("/api/deals", "POST",
+                      json.dumps({"org_name": "[HEALTHCHECK] Test Corp",
+                                  "stage": "reachout",
+                                  "contact_name": "Test Contact",
+                                  "expected_value": 1000}), timeout=20)
+    if code != 200:
+        log(False, "Create Deal", f"HTTP {code}")
+        deal_id = None
+    else:
+        deal = json.loads(body)
+        deal_id = deal.get("id", "")
+        log(bool(deal_id), "Create Deal", f"ID: {deal_id}")
+
+    if deal_id:
+        code, body = curl(f"/api/deals/{deal_id}")
+        d = json.loads(body) if body else {}
+        log(d.get("org_name","") == "[HEALTHCHECK] Test Corp", "GET Deal", f"org={d.get('org_name')}")
+        code, _ = curl(f"/api/deals/{deal_id}", "PATCH", json.dumps({"stage": "qualified"}))
+        log(code == 200, "PATCH Deal", f"HTTP {code}")
+        if lead_id:
+            code, _ = curl(f"/api/deals/{deal_id}/attach-lead", "POST",
+                          json.dumps({"lead_id": lead_id}))
+            log(code == 200, "Attach Lead to Deal", f"HTTP {code}")
+
+    # Chat
+    print("\n💬 Chat Capability")
+    if lead_id:
+        code, body = curl(f"/api/leads/{lead_id}/chat", "POST")
+        thread = json.loads(body) if body else {}
+        thread_id = thread.get("thread_id", "")
+        log(bool(thread_id), "Create Thread", f"ID: {thread_id}")
+        if thread_id:
+            code, body = curl(f"/api/agent/chat/{tenant_id}", "POST",
+                             json.dumps({"message": "Hi Ava, healthcheck test. Respond briefly.",
+                                        "thread_id": thread_id}), timeout=60)
+            chat = json.loads(body) if body else {}
+            has_response = bool(chat.get("response", "").strip())
+            log(has_response, "Ava Responded",
+                f"len={len(chat.get('response',''))}" if has_response else "empty response")
+            if has_response:
+                print(f"     └─ \"{chat['response'][:120]}...\"")
+            code, body = curl(f"/api/threads/{tenant_id}/{thread_id}")
+            t = json.loads(body) if body else {}
+            msgs = len(t.get("messages", []))
+            log(msgs >= 2, "Messages Stored", f"{msgs} messages")
+            curl(f"/api/threads/{tenant_id}/{thread_id}", "DELETE")
+
+    # Cadence
+    print("\n⏰ Cadence")
+    code, body = curl("/api/cadence/preview", "POST",
+                     json.dumps({"source": "form", "stage": "new"}))
+    try:
+        c = json.loads(body) if body else {}
+        log(bool(c), "Cadence Preview", "OK")
+    except:
+        log(False, "Cadence Preview", body[:80])
+
+    # Cleanup
+    print("\n🧹 Cleanup")
+    if deal_id:
+        code, _ = curl(f"/api/deals/{deal_id}", "DELETE")
+        log(code == 200, "Deleted Deal", f"HTTP {code}")
+    if lead_id:
+        code, body = curl("/api/leads/search?q=HEALTHCHECK")
+        hc = json.loads(body) if body else []
+        hc_ids = [l["id"] for l in hc if "[HEALTHCHECK]" in l.get("name","")]
+        if hc_ids:
+            code, _ = curl("/api/leads/bulk-delete", "POST",
+                          json.dumps({"lead_ids": hc_ids}))
+            log(code == 200, f"Bulk Deleted {len(hc_ids)} healthcheck leads", f"HTTP {code}")
+        else:
+            log(True, "No healthcheck leads to clean")
+
+    # Final Verification
+    code, body = curl("/api/tenants")
+    if code == 200:
+        final = json.loads(body)
+        final_count = final[0]["lead_count"]
+        log(final_count == baseline_leads, "Lead Count Restored",
+            f"{baseline_leads} → {final_count}")
+
+    # Report
+    print("\n" + "=" * 60)
+    print(f"  RESULTS: {PASS} passed, {FAIL} failed")
+    if FAIL == 0:
+        print("  ✅ ALL CHECKS PASSED — CLEANUP VERIFIED")
+    else:
+        print("  ❌ SOME CHECKS FAILED — REVIEW ABOVE")
+    print("=" * 60)
+    print()
+    return 0 if FAIL == 0 else 1
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,6 @@
+# Johnny skills sync — ONLY skills/ is shared. Everything else in the profile
+# root (secrets, sessions, state, memories) is machine-local and must never sync.
+*
+!.gitignore
+!*/
+!skills/**

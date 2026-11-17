@@ -1,0 +1,15 @@
+--- Reference files in this skill ---
+- references/tool-coverage-audit-june2026.md
+- references/auto-responder-repetition-gap.md
+- references/anti-hallucination-test-june2026.md
+- references/ara-learning-flywheel.md
+- references/cron-validation-and-safety-june2026.md
+- references/owner-whatsapp-routing.md
+- references/web-search-mandate-june2026.md
+- references/enforcer-evolution-june2026.md
+- references/prompt-trim-june2026.md
+- references/conversation-history-poisoning.md
+- references/time-of-day-pattern.md
+- references/auto-respond-hallucination-fix-june2026.md
+- references/server-side-auto-detection.md
+- references/cadence-trigger-diagnosis-chain.md — 6-layer diagnosis chain for "start outbound sequence" failures
